@@ -40,13 +40,13 @@ app.post('/', upload.single('inputFile'), async (req, res) => {
     // Access various properties of the uploaded file
     console.log('Field Name:', imageData.fieldname);
     console.log('Original Name:', imageData.originalname);
-    console.log('cache', csvCache);
+    console.log('cache', csvCache, fileName);
 
     if (!csvCache) {
       const s3Params = { Bucket: s3BucketName, Key: s3Key };
-      // const s3Stream = s3.getObject(s3Params).createReadStream();
+      // const s3Data = s3.getObject(s3Params).createReadStream();
       const s3Data = await s3.getObject(s3Params).promise();
-      console.log(s3Data.length);
+      console.log('s3 data recieved!');
 
       // Parse CSV data and store it in the cache
       csvCache = await new Promise((resolve, reject) => {
@@ -66,26 +66,15 @@ app.post('/', upload.single('inputFile'), async (req, res) => {
 
         parser.write(s3Data.Body);
         parser.end();
-          
-        // csv.parseString(s3Data.Body.toString())
-        //   .on('data', (row) => {
-        //     data.push(row);
-        //   })
-        //   .on('end', () => {
-        //     resolve(data);
-        //   })
-        //   .on('error', (error) => {
-        //     reject(error);
-        //   });
       });
     }
 
     // Find the corresponding image for the given name in the CSV data
-    console.log('csvCache reached ');
-    const match = csvCache.find(([Image, Results]) => Image === fileName);
-    console.log({match});
-    if (match) {
-      const [Image, Results] = match;
+    console.log('csvCache reached ', csvCache.length);
+    const match = csvCache.find(({Image, Results}) => Image === fileName) || {};
+    console.log('finding: ',match);
+    if (Object.keys(match).length) {
+      const {Image, Results} = match;
       res.send(`${fileName}:${Results}`);
     } else {
       // If no match found
