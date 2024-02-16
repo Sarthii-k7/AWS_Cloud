@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
 const AWS = require('aws-sdk');
-// const csv = require('fast-csv');
 const csvParser = require('csv-parser');
 
 
@@ -38,27 +37,28 @@ app.post('/', upload.single('inputFile'), async (req, res) => {
     fileName = imageData.originalname.split('.')[0];
 
     // Access various properties of the uploaded file
-    console.log('Field Name:', imageData.fieldname);
-    console.log('Original Name:', imageData.originalname);
-    console.log('cache', csvCache, fileName);
+    // console.log('Field Name:', imageData.fieldname);
+    // console.log('Original Name:', imageData.originalname);
+    // console.log('cache', csvCache, fileName);
 
     if (!csvCache) {
       const s3Params = { Bucket: s3BucketName, Key: s3Key };
-      // const s3Data = s3.getObject(s3Params).createReadStream();
       const s3Data = await s3.getObject(s3Params).promise();
       console.log('s3 data recieved!');
 
       // Parse CSV data and store it in the cache
       csvCache = await new Promise((resolve, reject) => {
-        const data = [];
+        // const data = [];
+        let data_object = {};
         const parser = csvParser();
 
         parser
         .on('data', (row) => {
-          data.push(row);
+          data_object[row['Image']] = row['Results'];
+          // data.push(row);
         })
         .on('end', () => {
-          resolve(data);
+          resolve(data_object);
         })
         .on('error', (error) => {
           reject(error);
@@ -70,12 +70,12 @@ app.post('/', upload.single('inputFile'), async (req, res) => {
     }
 
     // Find the corresponding image for the given name in the CSV data
-    console.log('csvCache reached ', csvCache.length);
-    const match = csvCache.find(({Image, Results}) => Image === fileName) || {};
-    console.log('finding: ',match);
-    if (Object.keys(match).length) {
-      const {Image, Results} = match;
-      res.send(`${fileName}:${Results}`);
+    // console.log('csvCache reached ', Object.keys(csvCache).length);
+    // const match = csvCache.find(({Image, Results}) => Image === fileName) || {};
+    const personName = csvCache[fileName] || '';
+    // console.log('finding: ',personName);
+    if (personName.length) {
+      res.send(`${fileName}:${personName}`);
     } else {
       // If no match found
       console.log(`No match found for ${fileName}`);
