@@ -29,16 +29,15 @@ const init = async () => {
       const parser = csvParser();
 
       parser
-      .on('data', (row) => {
-        data_object[row['Image']] = row['Results'];
-        // data.push(row);
-      })
-      .on('end', () => {
-        resolve(data_object);
-      })
-      .on('error', (error) => {
-        reject(error);
-      });
+        .on('data', (row) => {
+          data_object[row['Image']] = row['Results'];
+        })
+        .on('end', () => {
+          resolve(data_object);
+        })
+        .on('error', (error) => {
+          reject(error);
+        });
 
       parser.write(s3Data.Body);
       parser.end();
@@ -66,32 +65,6 @@ app.post('/', upload.single('inputFile'), async (req, res) => {
     }
 
     fileName = imageData.originalname.split('.')[0];
-
-    // if (!csvCache) {
-    //   const s3Data = await s3.getObject(s3Params).promise();
-    //   console.log('s3 data recieved!');
-
-    //   // Parse CSV data and store it in the cache
-    //   csvCache = await new Promise((resolve, reject) => {
-    //     let data_object = {};
-    //     const parser = csvParser();
-
-    //     parser
-    //     .on('data', (row) => {
-    //       data_object[row['Image']] = row['Results'];
-    //       // data.push(row);
-    //     })
-    //     .on('end', () => {
-    //       resolve(data_object);
-    //     })
-    //     .on('error', (error) => {
-    //       reject(error);
-    //     });
-
-    //     parser.write(s3Data.Body);
-    //     parser.end();
-    //   });
-    // }
 
     const personName = csvCache[fileName] || '';
     if (personName.length) {
