@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const AWS = require('aws-sdk');
 const csvParser = require('csv-parser');
-
+const fs = require('fs');
 
 const port = 8080;
 const app = express();
@@ -10,16 +10,25 @@ const app = express();
 const storage = multer.memoryStorage(); // Store the file in memory
 const upload = multer({ storage: storage });
 
+// Configure AWS SDK
+AWS.config.update({ region: 'us-east-1' });
+const sqs = new AWS.SQS({
+  // accessKeyId: 'AKIAZQ3DPYZYIEBMFR6M',
+  // secretAccessKey: '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',
+  // region: 'us-east-1',
+  apiVersion: '2012-11-05'
+});
 const s3 = new AWS.S3();
-const s3BucketName = 'myprojectpartone';
-const s3Key = '1000.csv';
-
-// In-memory cache to store CSV data
-let csvCache = null;
+const inputBucket = '1229615688-in-bucket';
+const outputBucket = '1229615688-out-bucket';
+const requestQueueUrl = 'https://sqs.us-east-1.amazonaws.com/654654293616/1229615688-req-queue';
+const responseQueueUrl = 'https://sqs.us-east-1.amazonaws.com/654654293616/1229615688-resp-queue';
 
 app.use(express.json());
 
-// const csvFilePath = 'image_100.csv';
+// Middleware for parsing JSON and URL-encoded bodies
+// app.use(bodyParser.json());
+// app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
   res.send('This is root!');
@@ -39,48 +48,52 @@ app.post('/', upload.single('inputFile'), async (req, res) => {
     // Access various properties of the uploaded file
     // console.log('Field Name:', imageData.fieldname);
     // console.log('Original Name:', imageData.originalname);
-    // console.log('cache', csvCache, fileName);
+    // console.log('cache: ', fileName, imageData);
+    const base64data = Buffer.from(imageData.buffer, 'binary');
 
-    if (!csvCache) {
-      const s3Params = { Bucket: s3BucketName, Key: s3Key };
-      const s3Data = await s3.getObject(s3Params).promise();
-      console.log('s3 data recieved!');
+    // await s3.upload({ Bucket: inputBucket, Key: fileName, Body: base64data }).promise(),
+    // await sqs.sendMessage({ QueueUrl: requestQueueUrl, MessageBody: JSON.stringify({ fileName }) }).promise()
 
-      // Parse CSV data and store it in the cache
-      csvCache = await new Promise((resolve, reject) => {
-        // const data = [];
-        let data_object = {};
-        const parser = csvParser();
+    await s3.upload({ Bucket: inputBucket, Key: fileName, Body: base64data }).promise();
+    console.log('S3 Upload Done!');
 
-        parser
-        .on('data', (row) => {
-          data_object[row['Image']] = row['Results'];
-          // data.push(row);
-        })
-        .on('end', () => {
-          resolve(data_object);
-        })
-        .on('error', (error) => {
-          reject(error);
-        });
+    await sqs.sendMessage({ QueueUrl: requestQueueUrl, MessageBody: JSON.stringify({ fileName }) }).promise();
+    console.log('Message Sent');
 
-        parser.write(s3Data.Body);
-        parser.end();
+    const response = await sqs.receiveMessage({
+      QueueUrl: responseQueueUrl,
+      MaxNumberOfMessages: 1,
+      WaitTimeSeconds: 20
+    }).promise();
+
+    let recognitionResult = '';
+    console.log('RESPONSE FROM QUEUE: ', response);
+    if (response.Messages && response.Messages.length > 0) {
+      const message = response.Messages[0];
+      recognitionResult = JSON.parse(message.Body).result;
+
+      // Store recognition result in output S3 bucket
+      await s3.putObject({
+        Bucket: outputBucket,
+        Key: fileName,
+        Body: recognitionResult
+      }).promise();
+
+      const deleteMessageParams = {
+        QueueUrl: responseQueueUrl,
+        ReceiptHandle: message.ReceiptHandle
+      };
+      sqs.deleteMessage(deleteMessageParams, (err, data) => {
+          if (err) {
+            console.error('Error deleting message:', err);
+          } else {
+            console.log('Message deleted successfully:', message.MessageId);
+          }
       });
     }
 
-    // Find the corresponding image for the given name in the CSV data
-    // console.log('csvCache reached ', Object.keys(csvCache).length);
-    // const match = csvCache.find(({Image, Results}) => Image === fileName) || {};
-    const personName = csvCache[fileName] || '';
-    // console.log('finding: ',personName);
-    if (personName.length) {
-      res.send(`${fileName}:${personName}`);
-    } else {
-      // If no match found
-      console.log(`No match found for ${fileName}`);
-      res.status(404).send(`No match found for ${fileName}`);
-    }
+    // Send recognition result back to the user
+    res.status(200).send(`${fileName}:${recognitionResult}`);
   } catch (error) {
     res.status(400).send(`Error: ${error.message}`);
   }
