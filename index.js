@@ -12,12 +12,7 @@ const upload = multer({ storage: storage });
 
 // Configure AWS SDK
 AWS.config.update({ region: 'us-east-1' });
-const sqs = new AWS.SQS({
-  // accessKeyId: 'AKIAZQ3DPYZYIEBMFR6M',
-  // secretAccessKey: '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',
-  // region: 'us-east-1',
-  apiVersion: '2012-11-05'
-});
+const sqs = new AWS.SQS({ apiVersion: '2012-11-05' });
 const s3 = new AWS.S3();
 const inputBucket = '1229615688-in-bucket';
 const outputBucket = '1229615688-out-bucket';
