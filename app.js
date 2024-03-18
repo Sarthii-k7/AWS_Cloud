@@ -1,6 +1,8 @@
 const AWS = require('aws-sdk');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const { createPool } = require('generic-pool');
+const fs = require('fs');
+const path = require('path');
 
 // Configure AWS SDK
 AWS.config.update({ region: 'us-east-1' });
@@ -30,14 +32,25 @@ async function receiveMessages() {
                 // Fetch image from input S3 bucket
                 const getObjectParams = { Bucket: inputBucket, Key: fileName };
                 const image = await s3.getObject(getObjectParams).promise();
-                const imageData = image.Body.toString();
+                const imageData = image.Body;
     
                 // console.log('Image found: ', imageData);
-                // Perform model inference here (replace with your logic)
-                const recognitionResult = await performModelInference(imageData);
-    
+                const localDirectoryPath = `/home/ubuntu/downloads`;
+                if (!fs.existsSync(localDirectoryPath)) {
+                    fs.mkdirSync(localDirectoryPath, { recursive: true }); // Create directory if it doesn't exist
+                }
+
+                const localImagePath = path.join(localDirectoryPath, `${fileName}.jpg`);
+                fs.writeFileSync(localImagePath, imageData); 
+
+                // const recognitionResult = await performModelInference(imageData);
+                const result = execSync(`python3 face_recognition.py ${localImagePath}`);
+                console.log('result: ',result);
+                const recognitionResult = result.toString('utf-8').trim();
+      
                 console.log('Recognition: ', recognitionResult);
-    
+                fs.unlinkSync(localImagePath);
+
                 const sendMessageParams = {
                     QueueUrl: responseQueueUrl,
                     MessageBody: JSON.stringify({ fileName: fileName, result: recognitionResult })
@@ -59,68 +72,6 @@ async function receiveMessages() {
             console.error('Error receiving messages:', err);
         }   
     }
-}
-
-const pythonPool = createPool({
-    create: () => {
-      return new Promise((resolve, reject) => {
-        const pythonProcess = spawn('python3', ['face_recognition.py'], { stdio: ['pipe', 'pipe', 'pipe'] });
-  
-        // Handle errors
-        pythonProcess.stderr.on('data', data => {
-          console.error('Python script error:', data.toString());
-          reject(new Error(data.toString()));
-        });
-  
-        resolve(pythonProcess);
-      });
-    },
-    destroy: (pythonProcess) => {
-      // Terminate the Python process when it's no longer needed
-      pythonProcess.kill();
-    },
-    validate: (pythonProcess) => {
-      // Check if the Python process is still alive and usable
-      return pythonProcess && !pythonProcess.killed;
-    },
-    max: 5 // Maximum number of Python processes in the pool
-});
-
-const performModelInference = async (imageData) => {
-    const pythonProcess = await pythonPool.acquire();
-
-    return new Promise((resolve, reject) => {
-
-        let result = '';
-        pythonProcess.stdout.on('data', data => {
-            result += data.toString();
-        });
-
-        // Handle errors
-        pythonProcess.stderr.on('data', data => {
-            console.error('Python script error:', data.toString());
-            reject(new Error(data.toString()));
-        });
-
-        // Handle process exit
-        pythonProcess.on('exit', code => {
-            if (code !== 0) {
-                console.error(`Python script exited with code ${code}`);
-                reject(new Error(`Python script exited with code ${code}`));
-            } else {
-                resolve(result.trim());
-            }
-
-            // Release the Python process back to the pool
-            pythonPool.release(pythonProcess);
-        });
-        
-        pythonProcess.stdin.write(imageData);
-        pythonProcess.stdin.end();
-        // setTimeout(() => {
-        //     resolve('Final');
-        // }, 3000);
-    });
 }
 
 // Start listening for messages

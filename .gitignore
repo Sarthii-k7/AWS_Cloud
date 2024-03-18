@@ -130,3 +130,5 @@ dist
 .pnp.*
 
 index2.js
+venv/
+.DS_Store
