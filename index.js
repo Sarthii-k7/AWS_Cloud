@@ -131,7 +131,16 @@ async function launchInstances(count) {
     KeyName: 'my_key_pair',
     SubnetId: 'subnet-0554a5de3fa6c6d9e',
     SecurityGroupIds: ['sg-0a22b9d25a1783165', 'sg-0f638c21fd6664676'],
-    UserData: Buffer.from(userScript).toString('base64')
+    UserData: Buffer.from(userScript).toString('base64'),
+    TagSpecifications: [
+      {
+        ResourceType: "instance",
+        Tags: [{
+          Key: "Name",
+          Value: `app-tier-instance-${globalInstanceCount}`
+        }]
+      }
+    ]
   };
   return ec2.runInstances(params).promise();
 }
