@@ -199,7 +199,7 @@ async function autoscale() {
 }
 
 // Periodically call autoscale function
-setInterval(autoscale, 10000);
+setInterval(autoscale, 15000);
 
 app.listen(port, () => {
   console.log(`Server is listening on port ${port}`);
